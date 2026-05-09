@@ -1,0 +1,27 @@
+name = "pirate-putt"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[durable_objects]
+bindings = [
+  { name = "LOBBY", class_name = "LobbyDO" }
+]
+
+[[migrations]]
+tag = "v1"
+new_classes = ["LobbyDO"]
+
+# KV namespaces for daily scores and guild progression
+# Create with: wrangler kv namespace create DAILY_SCORES
+# Create with: wrangler kv namespace create GUILD_DATA
+# Then paste the IDs below before deploying
+# [[kv_namespaces]]
+# binding = "DAILY_SCORES"
+# id = "YOUR_KV_NAMESPACE_ID"
+
+# [[kv_namespaces]]
+# binding = "GUILD_DATA"
+# id = "YOUR_KV_NAMESPACE_ID"
+
+# Discord secrets (set with: wrangler secret put DISCORD_CLIENT_ID)
+# DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET are set as secrets

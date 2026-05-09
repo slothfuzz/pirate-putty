@@ -1,0 +1,24 @@
+{
+  "name": "pirate-putt",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite client",
+    "dev:server": "wrangler dev --config server/wrangler.toml",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:server\"",
+    "build": "vite build client",
+    "preview": "vite preview client",
+    "deploy": "npm run build && wrangler deploy --config server/wrangler.toml"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241218.0",
+    "concurrently": "^9.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "wrangler": "^4.88.0"
+  },
+  "dependencies": {
+    "@discord/embedded-app-sdk": "^2.5.0"
+  }
+}
