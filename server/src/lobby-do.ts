@@ -1,7 +1,9 @@
 import type { Player, ClientMessage, ServerMessage } from '../../shared/messages';
-import type { BallState, Hole, Vec2 } from '../../shared/types';
-import { stepPhysics, launchBall } from '../../shared/physics';
+import type { BallState, Hole, Vec2, ZoneEffect } from '../../shared/types';
+import { stepPhysics, launchBall, ZONE_DURATIONS_MS, ZONE_COOLDOWN_MS } from '../../shared/physics';
 import { treasureCoast } from '../../shared/courses';
+
+const ZONE_EFFECTS: ZoneEffect[] = ['reflect', 'hold', 'slow', 'reset'];
 
 interface PlayerState {
   id: string;
@@ -14,6 +16,7 @@ interface PlayerGameData {
   ball: BallState;
   strokes: number;
   waterResetPos: Vec2;
+  teePos: Vec2;
   sunkThisHole: boolean;
 }
 
@@ -29,6 +32,11 @@ interface GameState {
   playerData: Map<string, PlayerGameData>;
   holeScores: Map<string, number[]>;
   intervalId: ReturnType<typeof setInterval> | null;
+  // Interference: active finish-line effects (effect -> expiry timestamp ms),
+  // and per-player cooldowns (playerId -> effect -> ready-at timestamp ms).
+  zones: Map<ZoneEffect, number>;
+  cooldowns: Map<string, Map<ZoneEffect, number>>;
+  lastZoneSig: string;
 }
 
 const TIMER_SECONDS = 30;
@@ -149,6 +157,11 @@ export class LobbyDO implements DurableObject {
       this.broadcast(emoteMsg);
       return;
     }
+
+    if (msg.type === 'interfere') {
+      this.handleInterfere(attachment.playerId, msg.effect);
+      return;
+    }
   }
 
   async webSocketClose(ws: WebSocket, _code: number, _reason: string): Promise<void> {
@@ -190,6 +203,7 @@ export class LobbyDO implements DurableObject {
         ball: { x: 0, y: 0, vx: 0, vy: 0, sunk: false },
         strokes: 0,
         waterResetPos: { x: 0, y: 0 },
+        teePos: { x: 0, y: 0 },
         sunkThisHole: false,
       });
       holeScores.set(p.id, []);
@@ -205,6 +219,9 @@ export class LobbyDO implements DurableObject {
       playerData,
       holeScores,
       intervalId: null,
+      zones: new Map(),
+      cooldowns: new Map(),
+      lastZoneSig: '',
     };
 
     const gameStartMsg: ServerMessage = {
@@ -230,6 +247,11 @@ export class LobbyDO implements DurableObject {
     this.game.sunkOrder = 0;
     this.game.phase = 'playing';
 
+    // Fresh finish line each hole: clear active effects and cooldowns.
+    this.game.zones.clear();
+    this.game.cooldowns.clear();
+    this.game.lastZoneSig = '';
+
     let playerIdx = 0;
     const playerCount = this.game.playerData.size;
     for (const data of this.game.playerData.values()) {
@@ -245,6 +267,7 @@ export class LobbyDO implements DurableObject {
       };
       data.strokes = 0;
       data.waterResetPos = { x: hole.ballStart.x, y: hole.ballStart.y + offset };
+      data.teePos = { x: hole.ballStart.x, y: hole.ballStart.y + offset };
       data.sunkThisHole = false;
       playerIdx++;
     }
@@ -279,13 +302,15 @@ export class LobbyDO implements DurableObject {
     const hole = this.game.holes[this.game.currentHoleIndex];
     if (!hole) return;
 
+    const activeZones = this.expireZones();
+
     let anyProcessed = false;
     for (const [playerId, data] of this.game.playerData) {
       if (data.sunkThisHole) continue;
       if (data.ball.vx === 0 && data.ball.vy === 0) continue;
 
       anyProcessed = true;
-      const result = stepPhysics(data.ball, hole.walls, hole.hazards, hole.holePos);
+      const result = stepPhysics(data.ball, hole.walls, hole.hazards, hole.holePos, activeZones);
 
       if (result.waterReset) {
         data.ball.x = data.waterResetPos.x;
@@ -293,6 +318,14 @@ export class LobbyDO implements DurableObject {
         data.ball.vx = 0;
         data.ball.vy = 0;
         data.strokes++;
+      }
+
+      if (result.reset) {
+        // Interference sent the ball home — no stroke penalty.
+        data.ball.x = data.teePos.x;
+        data.ball.y = data.teePos.y;
+        data.ball.vx = 0;
+        data.ball.vy = 0;
       }
 
       if (result.sunk) {
@@ -350,6 +383,53 @@ export class LobbyDO implements DurableObject {
     data.waterResetPos = { x: data.ball.x, y: data.ball.y };
     launchBall(data.ball, angle, power);
     data.strokes++;
+  }
+
+  private handleInterfere(playerId: string, effect: ZoneEffect): void {
+    if (!this.game || this.game.phase !== 'playing') return;
+    if (!ZONE_EFFECTS.includes(effect)) return;
+
+    const now = Date.now();
+    let playerCooldowns = this.game.cooldowns.get(playerId);
+    if (!playerCooldowns) {
+      playerCooldowns = new Map();
+      this.game.cooldowns.set(playerId, playerCooldowns);
+    }
+
+    const readyAt = playerCooldowns.get(effect) ?? 0;
+    if (now < readyAt) return; // still cooling down for this player
+
+    this.game.zones.set(effect, now + ZONE_DURATIONS_MS[effect]);
+    playerCooldowns.set(effect, now + ZONE_COOLDOWN_MS);
+    this.broadcastZoneState();
+  }
+
+  // Drop expired effects, return the still-active ones, and notify clients on change.
+  private expireZones(): ZoneEffect[] {
+    if (!this.game) return [];
+    const now = Date.now();
+    const active: ZoneEffect[] = [];
+    for (const [effect, expiresAt] of this.game.zones) {
+      if (expiresAt > now) active.push(effect);
+      else this.game.zones.delete(effect);
+    }
+    const sig = active.join(',');
+    if (sig !== this.game.lastZoneSig) {
+      this.game.lastZoneSig = sig;
+      this.broadcastZoneState();
+    }
+    return active;
+  }
+
+  private broadcastZoneState(): void {
+    if (!this.game) return;
+    const now = Date.now();
+    const zones: { effect: ZoneEffect; remainingMs: number }[] = [];
+    for (const [effect, expiresAt] of this.game.zones) {
+      const remainingMs = expiresAt - now;
+      if (remainingMs > 0) zones.push({ effect, remainingMs: Math.round(remainingMs) });
+    }
+    this.broadcast({ type: 'zoneState', zones });
   }
 
   private handleTimerExpiry(): void {

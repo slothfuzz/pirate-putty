@@ -1,4 +1,4 @@
-import type { BallState, Rect, Hazard, Vec2 } from './types';
+import type { BallState, Rect, Hazard, Vec2, ZoneEffect } from './types';
 import {
   BALL_RADIUS,
   WALL_INSET,
@@ -19,6 +19,29 @@ const STOP_THRESHOLD = 0.06;
 const SUBSTEPS = 5;
 export const MAX_POWER = 200;
 export const POWER_SCALE = 0.09;
+
+// === Interference: finish-line effects ===
+// How long each effect stays active once triggered (ms). From the brief legend.
+export const ZONE_DURATIONS_MS: Record<ZoneEffect, number> = {
+  reflect: 2000,
+  hold: 1000,
+  slow: 4000,
+  reset: 500,
+};
+// Per-player cooldown after triggering any effect (ms).
+export const ZONE_COOLDOWN_MS = 5000;
+// Concentric radii around the goal, outermost first: slow > hold > reflect > reset.
+// Board SVG geometry was visual-only; these are the gameplay radii (canvas units).
+export const ZONE_RADII: Record<ZoneEffect, number> = {
+  slow: 90,
+  hold: 55,
+  reflect: 30,
+  reset: 18,
+};
+// Slow caps a ball's speed to ~10% of a max-power putt while it's in the zone.
+const SLOW_SPEED_CAP = MAX_POWER * POWER_SCALE * 0.1;
+// Reflect kicks the ball back out with a moderate boost.
+const REFLECT_BOOST = 1.25;
 
 const PERIMETER_LEFT = WALL_INSET;
 const PERIMETER_RIGHT = CANVAS_W - WALL_INSET;
@@ -119,6 +142,7 @@ export interface PhysicsResult {
   sunk: boolean;
   waterReset: boolean;
   stopped: boolean;
+  reset: boolean;
 }
 
 export function stepPhysics(
@@ -126,13 +150,38 @@ export function stepPhysics(
   walls: Rect[],
   hazards: Hazard[],
   holePos: Vec2,
+  activeZones: ZoneEffect[] = [],
 ): PhysicsResult {
-  if (ball.sunk) return { sunk: true, waterReset: false, stopped: true };
+  if (ball.sunk) return { sunk: true, waterReset: false, stopped: true, reset: false };
 
-  const result: PhysicsResult = { sunk: false, waterReset: false, stopped: false };
+  const result: PhysicsResult = { sunk: false, waterReset: false, stopped: false, reset: false };
+
+  const reflect = activeZones.includes('reflect');
+  const hold = activeZones.includes('hold');
+  const slow = activeZones.includes('slow');
+  const reset = activeZones.includes('reset');
+  // Reflect/Hold/Reset deny the sink; Slow (and no active zone) still permits it.
+  const sinkBlocked = reflect || hold || reset;
+
+  // Slow: cap the ball to a crawl while inside the slow ring, so it still
+  // creeps toward the cup (and can sink) instead of stopping dead.
+  if (slow && dist(ball, holePos) < ZONE_RADII.slow) {
+    const spd = ballSpeed(ball);
+    if (spd > SLOW_SPEED_CAP) {
+      const f = SLOW_SPEED_CAP / spd;
+      ball.vx *= f;
+      ball.vy *= f;
+    }
+  }
 
   const subFraction = 1 / SUBSTEPS;
   for (let sub = 0; sub < SUBSTEPS; sub++) {
+    // Hold: freeze the ball in place while it's inside the hold ring.
+    if (hold && dist(ball, holePos) < ZONE_RADII.hold) {
+      ball.vx = 0;
+      ball.vy = 0;
+    }
+
     ball.x += ball.vx * subFraction;
     ball.y += ball.vy * subFraction;
 
@@ -155,17 +204,43 @@ export function stepPhysics(
       }
     }
 
+    // Reflect: bounce the ball off the goal's outer rim with a boost.
+    if (reflect) {
+      const dHole = dist(ball, holePos);
+      if (dHole < ZONE_RADII.reflect) {
+        const nx = dHole === 0 ? 1 : (ball.x - holePos.x) / dHole;
+        const ny = dHole === 0 ? 0 : (ball.y - holePos.y) / dHole;
+        ball.x = holePos.x + nx * ZONE_RADII.reflect;
+        ball.y = holePos.y + ny * ZONE_RADII.reflect;
+        const dot = ball.vx * nx + ball.vy * ny;
+        if (dot < 0) {
+          ball.vx -= 2 * dot * nx;
+          ball.vy -= 2 * dot * ny;
+          ball.vx *= REFLECT_BOOST;
+          ball.vy *= REFLECT_BOOST;
+        }
+      }
+    }
+
+    // Reset: a ball that touches the goal reverts to its starting line.
+    if (reset && dist(ball, holePos) < ZONE_RADII.reset) {
+      ball.vx = 0;
+      ball.vy = 0;
+      result.reset = true;
+      return result;
+    }
+
     const d = dist(ball, holePos);
     const spd = ballSpeed(ball);
 
-    if (d < ASSIST_DIST && spd < ASSIST_MAX_SPEED) {
+    if (!sinkBlocked && d < ASSIST_DIST && spd < ASSIST_MAX_SPEED) {
       const pullX = (holePos.x - ball.x) / d;
       const pullY = (holePos.y - ball.y) / d;
       ball.vx += pullX * ASSIST_STRENGTH;
       ball.vy += pullY * ASSIST_STRENGTH;
     }
 
-    if (d < SINK_DIST && spd < SINK_MAX_SPEED) {
+    if (!sinkBlocked && d < SINK_DIST && spd < SINK_MAX_SPEED) {
       ball.x = holePos.x;
       ball.y = holePos.y;
       ball.vx = 0;

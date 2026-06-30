@@ -5,12 +5,15 @@ export interface Player {
   connected: boolean;
 }
 
+import type { ZoneEffect } from './types';
+
 export type ClientMessage =
   | { type: 'create'; playerName: string; avatarId: number }
   | { type: 'join'; lobbyCode: string; playerName: string; avatarId: number }
   | { type: 'startGame'; courseId: string }
   | { type: 'shoot'; angle: number; power: number }
   | { type: 'emote'; key: 'arr' | 'yoho' | 'plank' | 'aye' | 'kraken' }
+  | { type: 'interfere'; effect: ZoneEffect }
   | { type: 'ready' };
 
 export type ServerMessage =
@@ -22,5 +25,6 @@ export type ServerMessage =
   | { type: 'holeEnd'; scores: { playerId: string; strokes: number }[]; nextStartsIn: number }
   | { type: 'gameEnd'; finalScores: { playerId: string; total: number }[]; awards: { name: string; playerId: string }[] }
   | { type: 'emote'; playerId: string; key: string }
+  | { type: 'zoneState'; zones: { effect: ZoneEffect; remainingMs: number }[] }
   | { type: 'error'; code: string; message: string }
   | { type: 'welcome'; playerId: string };

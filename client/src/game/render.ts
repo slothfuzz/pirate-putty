@@ -1,4 +1,4 @@
-import type { BallState, Hole, Rect, Decor, Hazard, Vec2 } from '../../../shared/types';
+import type { BallState, Hole, Rect, Decor, Hazard, Vec2, ZoneEffect } from '../../../shared/types';
 import {
   CANVAS_W,
   CANVAS_H,
@@ -11,7 +11,14 @@ import {
   PLAYABLE_BOTTOM,
 } from '../../../shared/types';
 import type { AimState } from './input';
-import { MAX_POWER } from './physics';
+import { MAX_POWER, ZONE_RADII } from './physics';
+
+const ZONE_COLORS: Record<ZoneEffect, string> = {
+  reflect: '#ff0000',
+  hold: '#662d91',
+  slow: '#d2408f',
+  reset: '#ffff54',
+};
 
 const COLORS = {
   ocean: '#1e6091',
@@ -747,4 +754,38 @@ function truncName(name: string, maxLen: number): string {
 
 export function tickFrame(): void {
   frameCount++;
+}
+
+// Active interference effects drawn as concentric rings around the goal.
+export function drawInterferenceZones(
+  ctx: CanvasRenderingContext2D,
+  pos: Vec2,
+  effects: ZoneEffect[],
+): void {
+  if (effects.length === 0) return;
+
+  // Outermost first so smaller rings stay visible on top.
+  const ordered = [...effects].sort((a, b) => ZONE_RADII[b] - ZONE_RADII[a]);
+  const pulse = 0.06 + Math.abs(Math.sin(frameCount * 0.08)) * 0.1;
+
+  ctx.save();
+  for (const effect of ordered) {
+    const r = ZONE_RADII[effect];
+    const color = ZONE_COLORS[effect];
+
+    ctx.globalAlpha = 0.12 + pulse;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.globalAlpha = 0.85;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(pos.x, pos.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+  ctx.globalAlpha = 1;
 }
