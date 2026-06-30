@@ -48,6 +48,9 @@ export interface HoleScore {
 
 export type GameScreen = 'title' | 'playing' | 'results';
 
+// Interference: the four finish-line effects, keyed by their brief legend.
+export type ZoneEffect = 'reflect' | 'hold' | 'slow' | 'reset';
+
 export const CANVAS_W = 680;
 export const CANVAS_H = 480;
 export const BALL_RADIUS = 8;

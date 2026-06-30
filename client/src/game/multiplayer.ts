@@ -1,4 +1,4 @@
-import type { BallState, Hole, Vec2 } from '../../../shared/types';
+import type { BallState, Hole, Vec2, ZoneEffect } from '../../../shared/types';
 import { CANVAS_W, CANVAS_H } from '../../../shared/types';
 import type { Player, ServerMessage } from '../../../shared/messages';
 import { AVATARS } from '../../../shared/avatars';
@@ -10,12 +10,14 @@ import {
   tickFrame,
   drawPlayerBalls,
   drawMultiplayerHUD,
+  drawInterferenceZones,
   renderMultiplayerResults,
   lightenColor,
 } from './render';
 import { initAudio, playPutt, playBounce, playSink, playSplash, playTimerWarning } from './audio';
 import { createEmoteBar, getEmoteText } from '../ui/emotes';
 import type { EmoteKey } from '../ui/emotes';
+import { createInterferenceBar } from '../ui/interference';
 import type { GameSocket } from '../net/socket';
 
 interface PlayerBallState {
@@ -93,6 +95,8 @@ interface MultiplayerState {
   holeOverlay: HoleOverlay | null;
   resultsFrame: number;
   timerWarningPlayed: boolean;
+  // Active interference effects: effect -> expiry timestamp (ms).
+  zones: Map<ZoneEffect, number>;
 }
 
 const DUMMY_BALL: BallState = { x: -100, y: -100, vx: 0, vy: 0, sunk: true };
@@ -142,6 +146,7 @@ export function createMultiplayerGame(
     holeOverlay: null,
     resultsFrame: 0,
     timerWarningPlayed: false,
+    zones: new Map(),
   };
 
   // Pre-allocated arrays reused each frame
@@ -166,6 +171,12 @@ export function createMultiplayerGame(
   // Emote bar
   const emoteBar = createEmoteBar(canvas.parentElement!, (key: EmoteKey) => {
     socket.send({ type: 'emote', key });
+  });
+
+  // Interference panel — fire a finish-line effect at the goal.
+  const interferenceBar = createInterferenceBar(canvas.parentElement!, (effect: ZoneEffect) => {
+    if (mpState.phase !== 'playing') return;
+    socket.send({ type: 'interfere', effect });
   });
 
   function getMyBall(): BallState {
@@ -235,6 +246,7 @@ export function createMultiplayerGame(
       mpState.sinkAnims.length = 0;
       mpState.particles.length = 0;
       mpState.timerWarningPlayed = false;
+      mpState.zones.clear();
 
       // Fade out hole overlay
       if (mpState.holeOverlay) {
@@ -365,6 +377,14 @@ export function createMultiplayerGame(
         });
       }
     }
+
+    if (msg.type === 'zoneState') {
+      const now = Date.now();
+      mpState.zones.clear();
+      for (const z of msg.zones) {
+        mpState.zones.set(z.effect, now + z.remainingMs);
+      }
+    }
   }
 
   let animFrameId = 0;
@@ -477,6 +497,15 @@ export function createMultiplayerGame(
       msgToShow,
       msgToShow ? 1 : 0,
     );
+
+    // Draw active interference zones around the goal
+    const nowMs = Date.now();
+    const activeEffects: ZoneEffect[] = [];
+    for (const [effect, until] of mpState.zones) {
+      if (until > nowMs) activeEffects.push(effect);
+      else mpState.zones.delete(effect);
+    }
+    drawInterferenceZones(ctx!, hole.holePos, activeEffects);
 
     // Draw trajectory preview when aiming
     if (aim.aiming && aim.power > 5 && myBallState && !myBallState.ball.sunk) {
@@ -616,6 +645,7 @@ export function createMultiplayerGame(
     cancelAnimationFrame(animFrameId);
     cleanupInput();
     emoteBar.destroy();
+    interferenceBar.destroy();
     canvas.removeEventListener('click', handleCanvasClick);
   }
 

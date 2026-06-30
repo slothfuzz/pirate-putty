@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 736 490.5">
+  <!-- Generator: Adobe Illustrator 29.5.1, SVG Export Plug-In . SVG Version: 2.1.0 Build 141)  -->
+  <defs>
+    <style>
+      .st0 {
+        fill: #404040;
+      }
+
+      .st1 {
+        fill: #fff;
+      }
+
+      .st2 {
+        fill: #ff0;
+      }
+
+      .st3 {
+        fill: #662d91;
+        stroke: #662d91;
+        stroke-width: 19px;
+      }
+
+      .st3, .st4 {
+        stroke-miterlimit: 10;
+      }
+
+      .st5 {
+        fill: #e42d91;
+      }
+
+      .st4 {
+        fill: none;
+        stroke: red;
+        stroke-width: 6px;
+      }
+    </style>
+  </defs>
+  <g id="floor">
+    <rect class="st1" width="736" height="490.5"/>
+  </g>
+  <g id="Functions">
+    <g id="Slow">
+      <path class="st5" d="M530.62,480.01c-21.35-24.85-34.25-57.17-34.25-92.5,0-78.44,63.59-142.03,142.03-142.03,29.41,0,56.74,8.94,79.41,24.26v210.28h-187.18Z"/>
+    </g>
+    <g id="Hold">
+      <circle class="st3" cx="638.39" cy="387.5" r="55.95"/>
+    </g>
+    <circle id="Reflect" class="st4" cx="638.39" cy="387.7" r="19.57"/>
+    <circle id="Reset" class="st2" cx="69.03" cy="63.08" r="17.08"/>
+  </g>
+  <g id="goal">
+    <g id="goal1" data-name="goal">
+      <circle cx="638.39" cy="387.5" r="17.08"/>
+    </g>
+  </g>
+  <g id="wall">
+    <rect class="st0" x="194.55" y="24.68" width="26.26" height="195.87"/>
+    <rect class="st0" x="194.55" y="270.41" width="26.26" height="195.87"/>
+    <rect class="st0" x="379.21" y="97.61" width="26.26" height="195.87"/>
+    <rect class="st0" x="539.3" y="24.68" width="26.26" height="245.73"/>
+    <rect class="st0" x="379.21" y="368.34" width="26.26" height="97.94"/>
+  </g>
+  <g id="boundary">
+    <path class="st0" d="M736,466.28V0H0v490.5h736.23v-24.22h-.23ZM24.79,466.28V24.68h686.59v441.6H24.79Z"/>
+  </g>
+</svg>

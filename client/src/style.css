@@ -350,3 +350,56 @@ html, body {
 .emote-btn:active {
   background: #0f3d5c;
 }
+
+/* Interference Bar */
+#interference-bar {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 680px;
+}
+
+.interfere-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: Georgia, serif;
+  font-size: 12px;
+  color: #fff8e0;
+  background: #164d77;
+  border: 1px solid var(--zone-color, #3a2410);
+  padding: 6px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  min-width: 86px;
+  justify-content: center;
+}
+
+.interfere-btn:hover:not(:disabled) {
+  background: #1e6091;
+}
+
+.interfere-btn:active:not(:disabled) {
+  background: #0f3d5c;
+}
+
+.interfere-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.interfere-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--zone-color, #fff);
+  box-shadow: 0 0 4px var(--zone-color, #fff);
+  flex-shrink: 0;
+}
+
+.interfere-label {
+  min-width: 48px;
+  text-align: center;
+}
